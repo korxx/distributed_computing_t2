@@ -14,6 +14,8 @@ G_STEPS = 'global_steps'
 LOCK = 'lockPath'
 N_OPERATIONS = 10
 
+REPORT_KEY = 'report_key_global_'
+
 class Host(SyncObj):
     def __init__(self,selfAddress, operation, operand, partners):
         cfg = SyncObjConf(dynamicMembershipChange = True, commandsWaitLeader=True, raftMaxTimeout=2.0, connectionTimeout=3.0)
@@ -157,13 +159,14 @@ def main():
     
     # Setup Initialization
     if p == '50000':
-        STORAGE.set(G_STEPS,0)
-        STORAGE.set(VALUE,1)
+        # For distributed hosts
+        if STORAGE.get(G_STEPS) == None :  
+            STORAGE.set(G_STEPS,0)
+            STORAGE.set(VALUE,1)
         time.sleep(1.5)
-        print('Global Step: {}\nPress enter to start setting up data structures'.format(STORAGE.get(G_STEPS)))
-        input()
-    else:
-        input('Press enter to start operations.')
+        print('Global Step: {}'.format(STORAGE.get(G_STEPS)))
+
+    input('Press enter to start operations.')
 
     # Manage operations
     for operation_i in range(N_OPERATIONS):
@@ -173,7 +176,7 @@ def main():
             time.sleep(0.2)
             print('Wating host to be ready!')
             pass
-            
+
         # Get lock...
         while not lock.isAcquired(LOCK):
             lock.tryAcquireLock(LOCK)
@@ -202,9 +205,13 @@ def main():
 
         # Update Report 
         last_step = "Step {}: Applied {} {} {} = {} on IP: {} Port:{}\n".format((STORAGE.get(G_STEPS)), aux_old_data, operation, operand, new_data, ip, p)
-        with open("test.txt", "a") as report:
+        with open("local_report.txt", "a") as report:
             report.write(last_step)
         print('Controller: Updated report.')
+
+        # Update Report (for distributed hosts)
+        dude = REPORT_KEY + STORAGE.get(G_STEPS)
+        STORAGE.set(REPORT_KEY + STORAGE.get(G_STEPS), last_step)
 
         # Release lock
         lock.release(LOCK)
@@ -213,8 +220,16 @@ def main():
         time.sleep(.8)
 
     print('Finished Operations.')
-    input('Press anything to quit. If there are other hosts applying operations, it is advised to keep this host alive.')
-    STORAGE.destroy()
+    if p == '50000':
+        input('Wait all operations end, then press enter to receive distributed report.')
+        with open("distributed_report.txt", "a") as report:
+            for i in range(int(STORAGE.get(G_STEPS))):
+                global_step_report = STORAGE.get(REPORT_KEY + str(i+1))
+                report.write(global_step_report)
+        print('Controller: Distributed report done!')
+    else:
+        input('Press anything to quit. If there are other hosts applying operations, it is advised to keep this host alive.')
+        STORAGE.destroy()
 
 if __name__ == '__main__':
     main()
